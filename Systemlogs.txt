@@ -1,0 +1,955 @@
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <omp.h>
+using namespace std;
+
+int main() {
+    int n, m, source;
+
+    // 🔹 Input
+    cout << "Enter number of vertices: ";
+    cin >> n;
+
+    cout << "Enter number of edges: ";
+    cin >> m;
+
+    vector<vector<int>> adj(n + 1);
+
+    cout << "Enter edges (u v):\n";
+    for (int i = 0; i < m; i++) {
+        int u, v;
+        cin >> u >> v;
+        adj[u].push_back(v);
+        adj[v].push_back(u);
+    }
+
+    cout << "Enter source vertex: ";
+    cin >> source;
+
+    vector<bool> visited(n + 1, false);
+    queue<int> q;
+
+    q.push(source);
+    visited[source] = true;
+
+    double start = omp_get_wtime();
+
+    cout << "\nParallel BFS Traversal: ";
+
+    while (!q.empty()) {
+        int curr = q.front();
+        q.pop();
+
+        cout << curr << " ";
+
+        // 🔹 Parallel processing of neighbors
+        #pragma omp parallel for
+        for (int i = 0; i < adj[curr].size(); i++) {
+            int next = adj[curr][i];
+
+            bool shouldAdd = false;
+
+            // Protect visited array
+            #pragma omp critical
+            {
+                if (!visited[next]) {
+                    visited[next] = true;
+                    shouldAdd = true;
+                }
+            }
+
+            // Protect queue
+            if (shouldAdd) {
+                #pragma omp critical
+                q.push(next);
+            }
+        }
+    }
+
+    double end = omp_get_wtime();
+
+    cout << "\nExecution Time: " << end - start << " seconds\n";
+
+    return 0;
+}
+
+/*  input
+    vertices 6
+    edge 8
+    0 1
+    0 5
+    2 5
+    0 2
+    2 3
+    1 4
+    3 4
+    4 3   */
+=====================
+
+#include <iostream>
+#include <vector>
+#include <omp.h>
+using namespace std;
+
+const int MAXN = 100000;
+
+vector<int> adj[MAXN + 5];
+bool visited[MAXN + 5];
+
+// 🔹 Parallel DFS using OpenMP tasks
+void dfs(int node) {
+
+    bool alreadyVisited = false;
+
+    // Critical section to safely check & update visited
+    #pragma omp critical
+    {
+        if (visited[node]) {
+            alreadyVisited = true;
+        } else {
+            visited[node] = true;
+        }
+    }
+
+    // If already visited, return
+    if (alreadyVisited) return;
+
+    // Explore neighbors in parallel
+    for (int i = 0; i < adj[node].size(); i++) {
+        int next_node = adj[node][i];
+
+        #pragma omp task
+        dfs(next_node);
+    }
+
+    // Wait for all child tasks to complete
+    #pragma omp taskwait
+}
+
+int main() {
+    int n, m;
+    cout << "Enter number of nodes and edges: ";
+    cin >> n >> m;
+
+    // Input edges
+    for (int i = 0; i < m; i++) {
+        int u, v;
+        cin >> u >> v;
+        adj[u].push_back(v);
+        adj[v].push_back(u);
+    }
+
+    int start_node;
+    cout << "Enter starting node: ";
+    cin >> start_node;
+
+    double start = omp_get_wtime();
+
+    // Start parallel region
+    #pragma omp parallel
+    {
+        #pragma omp single
+        dfs(start_node);
+    }
+
+    double end = omp_get_wtime();
+
+    // Print visited nodes (FIXED: include 0)
+    cout << "Visited nodes: ";
+    for (int i = 0; i < n; i++) {
+        if (visited[i]) {
+            cout << i << " ";
+        }
+    }
+    cout << endl;
+
+    cout << "Execution time: " << end - start << endl;
+
+    return 0;
+}
+
+=====================
+#include <iostream>
+#include <vector>
+#include <chrono>
+#include <omp.h>
+using namespace std;
+using namespace std::chrono;
+
+/* -------- Sequential Bubble Sort -------- */
+void bubbleSort(vector<int>& arr) {
+    int n = arr.size();
+    for (int i = 0; i < n - 1; i++) {
+        for (int j = 0; j < n - i - 1; j++) {
+            if (arr[j] > arr[j + 1]) {
+                swap(arr[j], arr[j + 1]);
+            }
+        }
+    }
+}
+
+/* -------- Parallel Bubble Sort (Odd-Even) -------- */
+void parallelBubbleSort(vector<int>& arr) {
+    int n = arr.size();
+
+    for (int i = 0; i < n; i++) {
+        int start = i % 2;
+
+        #pragma omp parallel for
+        for (int j = start; j < n - 1; j += 2) {
+            if (arr[j] > arr[j + 1]) {
+                swap(arr[j], arr[j + 1]);
+            }
+        }
+    }
+}
+
+/* -------- Print -------- */
+void printArray(vector<int>& arr) {
+    for (int x : arr)
+        cout << x << " ";
+    cout << endl;
+}
+
+int main() {
+    int n;
+    cout << "Enter number of elements: ";
+    cin >> n;
+
+    vector<int> arr(n), original(n);
+
+    cout << "Enter elements:\n";
+    for (int i = 0; i < n; i++) {
+        cin >> arr[i];
+        original[i] = arr[i];
+    }
+
+    cout << "\nOriginal Array:\n";
+    printArray(arr);
+
+    // Sequential
+    auto start = high_resolution_clock::now();
+    bubbleSort(arr);
+    auto end = high_resolution_clock::now();
+
+    cout << "\nSequential Bubble Sort:\n";
+    printArray(arr);
+    cout << "Time: " << duration<double, milli>(end - start).count() << " ms\n";
+
+    // Restore original
+    arr = original;
+
+    // Parallel
+    start = high_resolution_clock::now();
+    parallelBubbleSort(arr);
+    end = high_resolution_clock::now();
+
+    cout << "\nParallel Bubble Sort:\n";
+    printArray(arr);
+    cout << "Time: " << duration<double, milli>(end - start).count() << " ms\n";
+
+    return 0;
+}
+
+
+===========================
+
+#include <iostream>
+#include <vector>
+#include <omp.h>
+using namespace std;
+
+/* -------- MERGE FUNCTION -------- */
+void merge(vector<int>& arr, int l, int m, int r) {
+    vector<int> temp;
+    int i = l, j = m + 1;
+
+    while (i <= m && j <= r) {
+        if (arr[i] <= arr[j])
+            temp.push_back(arr[i++]);
+        else
+            temp.push_back(arr[j++]);
+    }
+
+    while (i <= m) temp.push_back(arr[i++]);
+    while (j <= r) temp.push_back(arr[j++]);
+
+    for (int k = 0; k < temp.size(); k++) {
+        arr[l + k] = temp[k];
+    }
+}
+
+/* -------- SEQUENTIAL MERGE SORT -------- */
+void merge_sort_seq(vector<int>& arr, int l, int r) {
+    if (l < r) {
+        int m = (l + r) / 2;
+        merge_sort_seq(arr, l, m);
+        merge_sort_seq(arr, m + 1, r);
+        merge(arr, l, m, r);
+    }
+}
+
+/* -------- PARALLEL MERGE SORT -------- */
+void merge_sort_parallel(vector<int>& arr, int l, int r) {
+    if (l < r) {
+        int m = (l + r) / 2;
+
+        #pragma omp parallel sections
+        {
+            #pragma omp section
+            merge_sort_parallel(arr, l, m);
+
+            #pragma omp section
+            merge_sort_parallel(arr, m + 1, r);
+        }
+
+        merge(arr, l, m, r);
+    }
+}
+
+/* -------- MAIN -------- */
+int main() {
+    int n;
+    cout << "Enter number of elements: ";
+    cin >> n;
+
+    vector<int> arr(n);
+    cout << "Enter elements:\n";
+    for (int i = 0; i < n; i++) cin >> arr[i];
+
+    omp_set_num_threads(4);
+
+    double start, end;
+
+    // Sequential
+    vector<int> a1 = arr;
+    start = omp_get_wtime();
+    merge_sort_seq(a1, 0, n - 1);
+    end = omp_get_wtime();
+    cout << "\nSequential Time: " << end - start;
+
+    // Parallel
+    vector<int> a2 = arr;
+    start = omp_get_wtime();
+    merge_sort_parallel(a2, 0, n - 1);
+    end = omp_get_wtime();
+    cout << "\nParallel Time: " << end - start;
+
+    cout << "\nSorted Array:\n";
+    for (int x : a2) cout << x << " ";
+
+    return 0;
+}
+
+
+===============================
+#include <iostream>
+#include <vector>
+#include <omp.h>
+#include <climits>
+using namespace std;
+
+void min_reduction(vector<int>& arr) {
+    int min_value = INT_MAX;
+    #pragma omp parallel for reduction(min: min_value)
+    for (int i = 0; i < arr.size(); i++) {
+        if (arr[i] < min_value) {
+            min_value = arr[i];
+        }
+    }
+    cout << "Minimum value: " << min_value << endl;
+}
+
+void max_reduction(vector<int>& arr) {
+    int max_value = INT_MIN;
+    #pragma omp parallel for reduction(max: max_value)
+    for (int i = 0; i < arr.size(); i++) {
+        if (arr[i] > max_value) {
+            max_value = arr[i];
+        }
+    }
+    cout << "Maximum value: " << max_value << endl;
+}
+
+void sum_reduction(vector<int>& arr) {
+    int sum = 0;
+    #pragma omp parallel for reduction(+: sum)
+    for (int i = 0; i < arr.size(); i++) {
+        sum += arr[i];
+    }
+    cout << "Sum: " << sum << endl;
+}
+
+void average_reduction(vector<int>& arr) {
+    int sum = 0;
+    #pragma omp parallel for reduction(+: sum)
+    for (int i = 0; i < arr.size(); i++) {
+        sum += arr[i];
+    }
+    cout << "Average: " << (double)sum / arr.size() << endl;
+}
+
+int main() {
+    int n;
+    cout << "Enter number of elements: ";
+    cin >> n;
+
+    vector<int> arr(n);
+
+    cout << "Enter " << n << " elements:\n";
+    for (int i = 0; i < n; i++) {
+        cin >> arr[i];
+    }
+
+    min_reduction(arr);
+    max_reduction(arr);
+    sum_reduction(arr);
+    average_reduction(arr);
+
+    return 0;
+}
+
+%%writefile vector_add.cu
+#include <iostream>
+using namespace std;
+
+__global__ void vectorAdd(int *A, int *B, int *C, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        C[i] = A[i] + B[i];
+    }
+}
+
+int main() {
+    int n;
+    cout << "Enter size of vectors: ";
+    cin >> n;
+
+    int *A = new int[n];
+    int *B = new int[n];
+    int *C = new int[n];
+
+    cout << "Enter elements of vector A:\n";
+    for (int i = 0; i < n; i++) cin >> A[i];
+
+    cout << "Enter elements of vector B:\n";
+    for (int i = 0; i < n; i++) cin >> B[i];
+
+    int *d_A, *d_B, *d_C;
+
+    cudaMalloc(&d_A, n * sizeof(int));
+    cudaMalloc(&d_B, n * sizeof(int));
+    cudaMalloc(&d_C, n * sizeof(int));
+
+    cudaMemcpy(d_A, A, n * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, B, n * sizeof(int), cudaMemcpyHostToDevice);
+
+    vectorAdd<<<(n+255)/256, 256>>>(d_A, d_B, d_C, n);
+
+    cudaMemcpy(C, d_C, n * sizeof(int), cudaMemcpyDeviceToHost);
+
+    cout << "Result:\n";
+    for (int i = 0; i < n; i++) cout << C[i] << " ";
+
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+
+    delete[] A;
+    delete[] B;
+    delete[] C;
+
+    return 0;
+}
+%%writefile matrix_mul.cu
+#include <iostream>
+using namespace std;
+
+__global__ void matrixMul(int *A, int *B, int *C, int n) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < n && col < n) {
+        int sum = 0;
+        for (int k = 0; k < n; k++) {
+            sum += A[row * n + k] * B[k * n + col];
+        }
+        C[row * n + col] = sum;
+    }
+}
+
+int main() {
+    int n;
+    cout << "Enter size of matrix (n x n): ";
+    cin >> n;
+
+    int size = n * n;
+
+    int *A = new int[size];
+    int *B = new int[size];
+    int *C = new int[size];
+
+    cout << "Enter elements of Matrix A:\n";
+    for (int i = 0; i < size; i++) cin >> A[i];
+
+    cout << "Enter elements of Matrix B:\n";
+    for (int i = 0; i < size; i++) cin >> B[i];
+
+    int *d_A, *d_B, *d_C;
+
+    cudaMalloc(&d_A, size * sizeof(int));
+    cudaMalloc(&d_B, size * sizeof(int));
+    cudaMalloc(&d_C, size * sizeof(int));
+
+    cudaMemcpy(d_A, A, size * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, B, size * sizeof(int), cudaMemcpyHostToDevice);
+
+    dim3 threads(16, 16);
+    dim3 blocks((n+15)/16, (n+15)/16);
+
+    matrixMul<<<blocks, threads>>>(d_A, d_B, d_C, n);
+
+    cudaMemcpy(C, d_C, size * sizeof(int), cudaMemcpyDeviceToHost);
+
+    cout << "Result Matrix:\n";
+    for (int i = 0; i < size; i++) {
+        cout << C[i] << " ";
+        if ((i+1) % n == 0) cout << endl;
+    }
+
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+
+    delete[] A;
+    delete[] B;
+    delete[] C;
+
+    return 0;
+}
+
+!nvcc matrix_mul.cu -o matrix_mul
+!./matrix_mul
+
+
+
+--------------------------------------------------------------------------------------------------------
+
+boston
+
+import pandas as pd
+import numpy as np
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Input
+
+data = pd.read_csv('./dataset/housing.csv')
+
+data.isnull().sum()
+
+data = data.fillna(data.mean())
+
+# 2. Split features and target
+X = data.drop("medv", axis=1)
+y = data["medv"]
+
+# 3. Train Test Split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# 4. Normalize data
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# 5. Build Deep Neural Network
+model = Sequential()
+
+# Input layer
+model.add(Input(shape=(X_train.shape[1],)))
+
+# Hidden layers
+model.add(Dense(64, activation='relu'))
+model.add(Dense(32, activation='relu'))
+
+# Output layer
+model.add(Dense(1))
+
+# 6.Compile Model
+model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+
+# 7. Train model
+model.fit(X_train, y_train, epochs=50, batch_size=16, verbose=1)
+
+
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+
+# ---------------- LINEAR REGRESSION ----------------
+lr_model = LinearRegression()
+lr_model.fit(X_train, y_train)
+
+lr_pred = lr_model.predict(X_test)
+
+lr_mse = mean_squared_error(y_test, lr_pred)
+lr_mae = mean_absolute_error(y_test, lr_pred)
+
+# ---------------- DNN ----------------
+dnn_pred = model.predict(X_test).flatten()
+
+dnn_mse = mean_squared_error(y_test, dnn_pred)
+dnn_mae = mean_absolute_error(y_test, dnn_pred)
+
+# ---------------- PRINT RESULTS ----------------
+print("===== MODEL COMPARISON =====\n")
+
+print("Linear Regression:")
+print("MSE:", lr_mse)
+print("MAE:", lr_mae)
+
+print("\nDeep Neural Network:")
+print("MSE:", dnn_mse)
+print("MAE:", dnn_mae)
+
+import matplotlib.pyplot as plt
+
+
+plt.scatter(y_test, lr_pred, label='Linear Regression')
+plt.scatter(y_test, dnn_pred, label='DNN')
+
+plt.plot([y_test.min(), y_test.max()],
+         [y_test.min(), y_test.max()])
+
+plt.legend()
+plt.title("Model Comparison")
+plt.xlabel("Actual")
+plt.ylabel("Predicted")
+
+plt.show()
+=======================
+imbd
+import numpy as np
+import pandas as pd
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Embedding, GlobalAveragePooling1D
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+data = pd.read_csv('./dataset/imdb.csv')
+data.head()
+
+# Convert labels
+le = LabelEncoder()
+data['sentiment'] = le.fit_transform(data['sentiment'])
+
+X_train, X_test, y_train, y_test = train_test_split(
+    data['review'], data['sentiment'], test_size=0.2
+)
+# Convert text to number
+tokenizer = Tokenizer(num_words=5000)
+tokenizer.fit_on_texts(X_train)
+X_train = tokenizer.texts_to_sequences(X_train)
+X_test = tokenizer.texts_to_sequences(X_test)
+
+# Make all reviews same length
+X_train = pad_sequences(X_train, maxlen=100)
+X_test = pad_sequences(X_test, maxlen=100)
+model = Sequential()
+model.add(Embedding(5000, 16))
+model.add(GlobalAveragePooling1D())
+model.add(Dense(16, activation='relu'))
+model.add(Dense(1, activation='sigmoid'))
+# Compile model
+model.compile(optimizer='adam',
+              loss='binary_crossentropy',
+              metrics=['accuracy'])
+
+# Train model
+model.fit(X_train, y_train, epochs=3)
+
+# Test accuracy
+loss, acc = model.evaluate(X_test, y_test)
+print("Accuracy:", acc)
+
+from sklearn.metrics import confusion_matrix, classification_report
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Predict on test data
+y_pred = model.predict(X_test)
+y_pred = (y_pred > 0.5).astype(int)
+
+cm = confusion_matrix(y_test, y_pred)
+
+plt.figure()
+sns.heatmap(cm, annot=True, fmt='d')
+plt.title("Confusion Matrix")
+plt.xlabel("Predicted")
+plt.ylabel("Actual")
+plt.show()
+
+print("\nClassification Report:\n")
+print(classification_report(y_test, y_pred))
+==================================
+OCR
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+
+url = "letter-recognition.data"
+
+# 1. Load dataset from local file
+data = pd.read_csv(url, header=None)
+# 2. Split features (columns 1-16) and label (column 0)
+X = data.iloc[:, 1:].values   # 16 feature columns
+y = data.iloc[:, 0].values    # First column = letter label (A-Z)
+# 3. Encode labels: A=0, B=1, ..., Z=25
+le = LabelEncoder()
+y = le.fit_transform(y)        # y is now integers, NOT one-hot
+
+# 4. Convert features to float (required by Keras)
+X = X.astype('float32')
+
+# 5. Train-test split: 80% train, 20% test
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+# 6. Build DNN model
+model = Sequential()
+model.add(Dense(64, activation='relu', input_shape=(16,)))  # Hidden Layer 1
+model.add(Dense(64, activation='relu'))                      # Hidden Layer 2
+model.add(Dense(26, activation='softmax'))                   # Output: 26 classes
+# 7. Compile — sparse loss because labels are integers (not one-hot)
+model.compile(
+    optimizer='adam',
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy']
+)
+# 8. Train for 25 epochs
+model.fit(X_train, y_train, epochs=25, batch_size=32)
+# 9. Evaluate on test data
+loss, acc = model.evaluate(X_test, y_test)
+print(f"Test Accuracy: {acc * 100:.2f}%")
+print(f"Test Loss:     {loss:.4f}")
+
+========================================================
+plant
+
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+from tensorflow.keras.preprocessing.image import ImageDataGeneratortrain_path = "train_val_test/train"
+val_path   = "train_val_test/val"
+test_path  = "train_val_test/test"
+train_gen = ImageDataGenerator(rescale=1./255)
+val_gen   = ImageDataGenerator(rescale=1./255)
+test_gen  = ImageDataGenerator(rescale=1./255)
+
+train_data = train_gen.flow_from_directory(
+    train_path,
+    target_size=(64,64),
+    batch_size=32,
+    class_mode='categorical'
+)
+
+val_data = val_gen.flow_from_directory(
+    val_path,
+    target_size=(64,64),
+    batch_size=32,
+    class_mode='categorical'
+)
+
+test_data = test_gen.flow_from_directory(
+    test_path,
+    target_size=(64,64),
+    batch_size=32,
+    class_mode='categorical'
+)
+Found 14437 images belonging to 15 classes.
+Found 2073 images belonging to 15 classes.
+Found 4128 images belonging to 15 classes.
+model = Sequential()
+
+model.add(Conv2D(32, (3,3), activation='relu', input_shape=(64,64,3)))
+model.add(MaxPooling2D(2,2))
+
+model.add(Flatten())
+
+model.add(Dense(64, activation='relu'))
+model.add(Dense(train_data.num_classes, activation='softmax'))
+
+model.compile(
+    optimizer='adam',
+    loss='categorical_crossentropy',
+    metrics=['accuracy']
+)
+model.fit(train_data, epochs=5, validation_data=val_data)
+
+loss, acc = model.evaluate(test_data)
+print("Accuracy:", acc)
+
+=====================================
+fashion
+
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Input, Conv2D, AvgPool2D, GlobalAveragePooling2D, Dense
+from tensorflow.keras.utils import to_categorical
+from sklearn.metrics import confusion_matrix, classification_report
+
+import pandas as pd
+train_df = pd.read_csv('fashion-mnist_train.csv')
+test_df  = pd.read_csv('fashion-mnist_test.csv')
+y_train = train_df['label'].values
+y_test  = test_df['label'].values
+X_train = train_df.drop('label', axis=1).values.reshape(-1, 28, 28)  # unflatten pixels to 28x28
+X_test  = test_df.drop('label', axis=1).values.reshape(-1, 28, 28)
+
+print("Training set shape:", X_train.shape)   # (60000, 28, 28)
+print("Test set shape:    ", X_test.shape)    # (10000, 28, 28)
+print("Classes:", np.unique(y_train))
+Training set shape: (60000, 28, 28)
+Test set shape:     (10000, 28, 28)
+Classes: [0 1 2 3 4 5 6 7 8 9]
+class_names = ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
+               'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot']
+
+# Class distribution
+unique, counts = np.unique(y_train, return_counts=True)
+plt.figure(figsize=(10, 4))
+plt.bar([class_names[i] for i in unique], counts)
+plt.xticks(rotation=45, ha='right')
+plt.title("Training Set Class Distribution")
+plt.ylabel("Count")
+plt.tight_layout()
+plt.show()
+
+# Sample images (one per class)
+plt.figure(figsize=(15, 3))
+for i, cls in enumerate(class_names):
+    idx = np.where(y_train == i)[0][0]   # index of first image for this class
+    plt.subplot(1, 10, i + 1)
+    plt.imshow(X_train[idx], cmap='gray')
+    plt.title(cls, fontsize=7)
+    plt.axis('off')
+plt.suptitle("Sample Image per Class")
+plt.tight_layout()
+plt.show()
+
+# Reshape to add channel dimension: (samples, 28, 28) -> (samples, 28, 28, 1)
+X_train = X_train.reshape(-1, 28, 28, 1).astype('float32') / 255.0  # normalize to [0,1]
+X_test  = X_test.reshape(-1, 28, 28, 1).astype('float32') / 255.0
+
+# One-hot encode labels: e.g. class 3 of 10 -> [0,0,0,1,0,0,0,0,0,0]
+y_train_cat = to_categorical(y_train, num_classes=10)
+y_test_cat  = to_categorical(y_test,  num_classes=10)
+
+print("X_train shape:", X_train.shape)
+print("y_train_cat shape:", y_train_cat.shape)
+
+model = Sequential()
+
+model.add(Input(shape=(28, 28, 1)))                                          # input: 28x28 grayscale image
+model.add(Conv2D(64, kernel_size=(3, 3), activation='relu', padding='same')) # 64 filters, extract features
+model.add(AvgPool2D(pool_size=(2, 2)))                                        # downsample to 14x14
+
+model.add(Conv2D(32, kernel_size=(3, 3), activation='relu', padding='same')) # 32 filters, refine features
+model.add(AvgPool2D(pool_size=(2, 2)))                                        # downsample to 7x7
+
+model.add(GlobalAveragePooling2D())                                           # average each feature map to single value
+model.add(Dense(10, activation='softmax'))                                    # output: probability for each of 10 classes
+
+model.summary()
+
+# categorical_crossentropy: standard loss for multi-class one-hot classification
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+# validation_data uses test set to monitor performance after each epoch
+history = model.fit(X_train, y_train_cat, epochs=10, validation_data=(X_test, y_test_cat))
+
+loss, accuracy = model.evaluate(X_test, y_test_cat)
+print(f"Test Loss:     {loss:.4f}")
+print(f"Test Accuracy: {accuracy*100:.2f}%")
+
+====================================
+
+google
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, LSTM, Input
+data = pd.read_csv("./dataset/googleStockPrice.csv")
+data.head()
+
+data['Volume'] = data['Volume'].str.replace(',', '').astype(float)
+prices = data[['Open']].values
+
+# Scale
+scaler = MinMaxScaler()
+prices_scaled = scaler.fit_transform(prices)
+# creat sequences
+X = []
+y = []
+
+for i in range(60, len(prices_scaled)):
+    X.append(prices_scaled[i-60:i])   # 60 timesteps
+    y.append(prices_scaled[i])
+
+X = np.array(X)
+y = np.array(y)
+print("Shape before:", X.shape)
+
+# Model
+model = Sequential()
+model.add(Input(shape=(60,1)))  
+model.add(LSTM(50))
+model.add(Dense(1))
+model.compile(optimizer="adam", loss="mean_squared_error")
+model.fit(X, y, epochs=5, batch_size=32)
+
+
+# Predict on training data (for visualization)
+predicted = model.predict(X)
+
+# Convert back to original scale
+predicted = scaler.inverse_transform(predicted)
+real = scaler.inverse_transform(y)
+
+# Plot graph
+import matplotlib.pyplot as plt
+
+plt.plot(real, color='red', label='Real Price')
+plt.plot(predicted, color='blue', label='Predicted Price')
+plt.title('Stock Price Prediction')
+plt.xlabel('Time')
+plt.ylabel('Price')
+plt.legend()
+plt.show()
+
+# Metrics
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import numpy as np
+
+rmse = np.sqrt(mean_squared_error(real, predicted))
+mae = mean_absolute_error(real, predicted)
+r2 = r2_score(real, predicted)
+
+print("RMSE:", rmse)
+print("MAE:", mae)
+print("R2 Score:", r2)
+
